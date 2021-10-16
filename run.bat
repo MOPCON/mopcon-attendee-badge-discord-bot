@@ -1,0 +1,1 @@
+dcbo.exe -f test.xlsx -t [Discord BOT Secret] -g 855718269092233247 -period [Backup Second | 600]

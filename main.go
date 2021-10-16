@@ -84,7 +84,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		panic(err)
 	}
 
-	// comefrom private messahe
+	// comefrom private message
 	if isDM {
 
 		// split to command
@@ -100,6 +100,14 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if len(commands) != 2 {
 				s.ChannelMessageSend(m.ChannelID, "您還沒輸入正確的票號喔，您需要輸入: 「kktix [您的票號]」，範例: 「kktix 123456789」。")
 				return
+			}
+
+			// if this user is already registed, then pass it.
+			for _, record := range usedToken {
+				if record.User == string(m.Author.ID) {
+					s.ChannelMessageSend(m.ChannelID, "您已經有註冊過了，無法再次註冊，若有票務相關問題，請尋求服務台的協助")
+					return
+				}
 			}
 
 			// block duplicate register
