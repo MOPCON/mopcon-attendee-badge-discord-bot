@@ -1,0 +1,1 @@
+dcbo.exe -f [file].xlsx -t [Discord Application Bot Token] -g [Guild ID (頻道 ID)] -period [備份頻率(秒)]

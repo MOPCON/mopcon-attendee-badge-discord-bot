@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -36,16 +37,21 @@ func init() {
 
 func main() {
 
-	ReadXLSXToMap(XLSXFile, &KeyPairMap)
+	ReadXLSXToTicketMap(XLSXFile, &KeyPairMap)
 
-	c := cron.New()
-	c.AddFunc("@every "+BackupPeroid+"s", func() {
-		SaveUsedCSV()
-		log.Println("File Backup Done.")
-	})
-	go c.Start()
-	// close cron
-	defer c.Stop()
+	// BackupPeroid start require variable larger then 0.
+	if BackupPeroid != "0" {
+
+		c := cron.New()
+		c.AddFunc("@every "+BackupPeroid+"s", func() {
+			SaveUsedCSV()
+			log.Println("File Backup Done.")
+		})
+		go c.Start()
+		// close cron
+		defer c.Stop()
+
+	}
 
 	RegisterBotFuncAndRun(DiscordAuth{
 		BotSecret: BotSecret,
@@ -86,25 +92,29 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// comefrom private message
 	if isDM {
+		fmt.Println(m.Author.Username, m.Author.ID, "進行了驗票流程, 內容:", m.Content)
 
 		// split to command
 		commands := strings.Split(m.Content, " ")
 
 		if len(commands) == 0 {
-			s.ChannelMessageSend(m.ChannelID, "找不到這項指令，若您希望註冊您在 MOPCON 2021 的身分，請您輸入: 「kktix [您的票號]」。")
+			fmt.Println(m.Author.Username + " / " + m.Author.ID + "找不到這項指令，若您希望註冊您在 MOPCON 2021 的身分，請您輸入: 「ticket [您的票號] [您的 Email]」。")
+			s.ChannelMessageSend(m.ChannelID, "找不到這項指令，若您希望註冊您在 MOPCON 2021 的身分，請您輸入: 「ticket [您的票號] [您的 Email]」。")
 			return
 		}
 
-		if commands[0] == "kktix" {
+		if commands[0] == "ticket" || commands[0] == "kktix" || commands[0] == "accupass" {
 			// check commands
-			if len(commands) != 2 {
-				s.ChannelMessageSend(m.ChannelID, "您還沒輸入正確的票號喔，您需要輸入: 「kktix [您的票號]」，範例: 「kktix 123456789」。")
+			if len(commands) != 3 {
+				fmt.Println(m.Author.Username + " / " + m.Author.ID + "您還沒輸入正確的票號喔，您需要輸入: 「ticket [您的票號] [您的 Email]」，範例: 「ticket 123456789 test@test.com」。")
+				s.ChannelMessageSend(m.ChannelID, "您還沒輸入正確的票號喔，您需要輸入: 「ticket [您的票號] [您的 Email]」，範例: 「ticket 123456789 test@test.com」。")
 				return
 			}
 
 			// if this user is already registed, then pass it.
 			for _, record := range usedToken {
 				if record.User == string(m.Author.ID) {
+					fmt.Println(m.Author.Username + " / " + m.Author.ID + "您已經有註冊過了，無法再次註冊，若有票務相關問題，請尋求服務台的協助")
 					s.ChannelMessageSend(m.ChannelID, "您已經有註冊過了，無法再次註冊，若有票務相關問題，請尋求服務台的協助")
 					return
 				}
@@ -112,31 +122,44 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 			// block duplicate register
 			if _, ok := usedToken[commands[1]]; ok {
+				fmt.Println(m.Author.Username + " / " + m.Author.ID + "這個票號已經被註冊過了，請尋求服務台頻道的協助。")
 				s.ChannelMessageSend(m.ChannelID, "這個票號已經被註冊過了，請尋求服務台頻道的協助。")
 				return
 			}
 
 			// given badge and set used token
-			if badge, ok := KeyPairMap[commands[1]]; ok {
+			if ticket, ok := KeyPairMap[commands[1]]; ok {
+				// check email is correct
+				if ticket.Email != commands[2] {
+					fmt.Println(m.Author.Username + " / " + m.Author.ID + "此票種註冊資訊錯誤，請檢查您的票號或 Email 是否正確，或洽詢服務台。")
+					s.ChannelMessageSend(m.ChannelID, "此票種註冊資訊錯誤，請檢查您的票號或 Email 是否正確，或洽詢服務台。")
+					return
+				}
+
 				usedToken[commands[1]] = &Record{
 					User: m.Author.ID,
 					Time: time.Now().Format("2006-01-02 15:04:05"),
 				}
 
-				s.GuildMemberRoleAdd(GuildID, m.Author.ID, badge)
+				err = s.GuildMemberRoleAdd(GuildID, m.Author.ID, ticket.Badge)
+				fmt.Println(err)
+				fmt.Println(GuildID, m.Author.ID, ticket)
 
+				fmt.Println(m.Author.Username + " / " + m.Author.ID + "您的身分已經完成設定，歡迎您回到 MOPCON Discord 會場!")
 				s.ChannelMessageSend(m.ChannelID, "您的身分已經完成設定，歡迎您回到 MOPCON Discord 會場!")
 			} else {
+				fmt.Println(m.Author.Username + " / " + m.Author.ID + "這個票號不存在，請尋求服務台頻道的協助。")
 				s.ChannelMessageSend(m.ChannelID, "這個票號不存在，請尋求服務台頻道的協助。")
 				return
 			}
 		} else {
-			s.ChannelMessageSend(m.ChannelID, "這個指令不存在，您需要輸入: 「kktix [您的票號]」，範例: 「kktix 123456789」 以進行註冊。")
+			fmt.Println(m.Author.Username + " / " + m.Author.ID + "這個指令不存在，您需要輸入: 「ticket [您的票號]」，範例: 「ticket 123456789」 以進行註冊。")
+			s.ChannelMessageSend(m.ChannelID, "這個指令不存在，您需要輸入: 「ticket [您的票號]」，範例: 「ticket 123456789」 以進行註冊。")
 			return
 		}
 	} else {
 		// receive global message
-		s.ChannelMessageSend(m.ChannelID, "請您使用私訊的方式進行 KKTIX 驗票註冊，謝謝您!")
+		//s.ChannelMessageSend(m.ChannelID, "請您使用私訊的方式進行驗票註冊，謝謝您!")
 	}
 }
 
